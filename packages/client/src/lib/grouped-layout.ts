@@ -1,9 +1,7 @@
-// beadbox-2wi: the Grouped (by status) arrangement of the Beads view, per
-// pm/spec.md §4.2.4. Grouped ON is the same items as the tree, arranged by
-// status: each epic keeps the Grouped OFF card, shown inside every status group
-// where it has beads, and every bead appears exactly once, in the group of its
-// own status (inside its nearest ancestor epic's card, or in the group's loose
-// table when it has none). Rows never carry children: a subtask is its own row.
+// Grouped view: place each top-level task in one status group, keeping all of
+// its matching descendants nested below it. Group membership follows the
+// task's status (or the first matching descendant when the task is filtered).
+// Subtasks keep their own status badges without being detached from their task.
 import type { Bead, Epic } from "@/lib/types"
 
 /** One epic's card inside one status group. */
@@ -12,7 +10,7 @@ export interface GroupedCard {
   key: string
   /** The epic as the Grouped OFF tree renders it (header, progress, n/m). */
   epic: Epic
-  /** The rows of this group's status under this epic, children stripped. */
+  /** Top-level tasks assigned to this group, retaining nested subtasks. */
   beads: Bead[]
   /** True when this is the epic's own status, so its header counts here. */
   ownStatus: boolean
@@ -25,7 +23,7 @@ export interface GroupedSection {
   /** Beads with no parent epic, shown after the cards. */
   loose: Bead[]
   /**
-   * Items of this status shown in the group: every row, plus the card
+   * Items nested under tasks assigned to this group, plus the card
    * headers of epics whose own status is this one (not cards that appear here
    * only to hold their children). Summed over the groups, each visible bead
    * and epic counts exactly once.
@@ -55,26 +53,42 @@ export function groupTreeByStatus(
     return s
   }
 
-  // A bead and its subtasks, in tree order, each as a row without children.
-  const rowsUnder = (beads: Bead[] | undefined): Bead[] =>
-    (beads ?? []).flatMap((b) => [{ ...b, children: undefined }, ...rowsUnder(b.children)])
+  // Keep ancestors of matching descendants, including when the ancestor's own
+  // status or type is filtered out. Every retained child has exactly one parent.
+  const matchingTree = (beads: Bead[] | undefined): Bead[] =>
+    (beads ?? []).flatMap((bead) => {
+      const children = matchingTree(bead.children)
+      if (!matches(bead) && children.length === 0) return []
+      return [{ ...bead, children: children.length ? children : undefined }]
+    })
+
+  const firstMatchingStatus = (bead: Bead): string => {
+    if (matches(bead)) return bead.status
+    for (const child of bead.children ?? []) {
+      const status = firstMatchingStatus(child)
+      if (status) return status
+    }
+    return bead.status
+  }
 
   const byStatus = (rows: Bead[]) => {
     const out = new Map<string, Bead[]>()
-    for (const row of rows.filter(matches)) {
-      const list = out.get(row.status)
+    for (const row of rows) {
+      const status = firstMatchingStatus(row)
+      const list = out.get(status)
       if (list) list.push(row)
-      else out.set(row.status, [row])
+      else out.set(status, [row])
     }
     return out
   }
 
   const walk = (epic: Epic) => {
     if (epic.id === STANDALONE) {
-      for (const [status, rows] of byStatus(rowsUnder(epic.children))) sectionFor(status).loose.push(...rows)
+      for (const [status, rows] of byStatus(matchingTree(epic.children)))
+        sectionFor(status).loose.push(...rows)
       return
     }
-    const rows = byStatus(rowsUnder(epic.children))
+    const rows = byStatus(matchingTree(epic.children))
     const header = headerFor(epic)
     const ownStatus = matches(epic) ? epic.status : null
     const statuses = [...rows.keys()]
@@ -104,7 +118,9 @@ export function groupTreeByStatus(
     .filter((status) => sections.has(status))
     .map((status) => {
       const { cards, loose } = sections.get(status) as { cards: GroupedCard[]; loose: Bead[] }
-      const rows = cards.reduce((n, c) => n + c.beads.length, 0) + loose.length
+      const countTree = (beads: Bead[]): number =>
+        beads.reduce((n, bead) => n + 1 + countTree(bead.children ?? []), 0)
+      const rows = cards.reduce((n, c) => n + countTree(c.beads), 0) + countTree(loose)
       return {
         status,
         label: labelFor(status),
@@ -126,18 +142,27 @@ export interface GroupedNavItem {
  * The keyboard order of the Grouped view: per group, each card header (its
  * own stop, keyed by the card, since one epic can have a card in several
  * groups), then the card's rows when the epic is expanded, then the group's
- * loose rows. Rows carry no children here, so every bead is one stop.
+ * loose rows. A collapsed task is a single stop; expanding it adds its
+ * visible descendants in exactly the same order as BeadTable renders them.
  */
-export function groupedNavigationOrder(layout: GroupedSection[], expandedEpics: Set<string>): GroupedNavItem[] {
+export function groupedNavigationOrder(
+  layout: GroupedSection[],
+  expandedEpics: Set<string>,
+  expandedBeads: Set<string> = new Set(),
+): GroupedNavItem[] {
   const items: GroupedNavItem[] = []
+  const addBead = (bead: Bead) => {
+    items.push({ id: bead.id, type: "bead", bead })
+    if (expandedBeads.has(bead.id)) bead.children?.forEach(addBead)
+  }
   for (const section of layout) {
     for (const card of section.cards) {
       items.push({ id: card.key, type: "epic", bead: card.epic })
       if (expandedEpics.has(card.epic.id)) {
-        for (const bead of card.beads) items.push({ id: bead.id, type: "bead", bead })
+        card.beads.forEach(addBead)
       }
     }
-    for (const bead of section.loose) items.push({ id: bead.id, type: "bead", bead })
+    section.loose.forEach(addBead)
   }
   return items
 }

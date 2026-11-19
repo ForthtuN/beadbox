@@ -1,0 +1,20 @@
+{
+  "productName": "Beadbox Local",
+  "identifier": "app.beadbox.local",
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": []
+    }
+  },
+  "bundle": {
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": false,
+    "icon": ["icons/icon.ico", "icons/icon.png"],
+    "windows": {
+      "nsis": {
+        "startMenuFolder": "Beadbox Local"
+      }
+    }
+  }
+}

@@ -332,8 +332,8 @@ export function useEpicNavigation(opts: UseEpicNavigationOpts) {
       // beadbox-2wi: Grouped view, in display order. Each card header is its
       // own stop (an epic can have a card in several groups, so the stop is
       // the card's key; Enter still opens the epic), then the card's rows when
-      // it is open, then the group's loose rows. Rows have no children here.
-      for (const item of groupedNavigationOrder(groupedLayout, expandedEpics)) {
+      // it is open, then expanded subtasks in table order, and loose rows.
+      for (const item of groupedNavigationOrder(groupedLayout, expandedEpics, expandedBeads)) {
         indexMap.set(item.id, items.length)
         items.push(item)
       }

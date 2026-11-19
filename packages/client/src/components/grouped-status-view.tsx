@@ -1,8 +1,6 @@
 // beadbox-2wi: renders the Grouped (by status) arrangement built by
-// groupTreeByStatus (pm/spec.md §4.2.4). Each status group shows the SAME epic
-// card as the tree (EpicRow), listing only that group's rows, then the group's
-// loose beads. Rows carry no children, so nothing is listed twice and no group
-// shows a bead of another status.
+// groupTreeByStatus keeps each task with its nested subtasks. Grouping uses the
+// top-level task's status; subtasks retain their own status and expand in place.
 import { BeadTable } from "@/components/bead-table"
 import { EpicRow, type EpicRowProps } from "@/components/epic-tree"
 import { StatusDot } from "@/components/status-dot"
@@ -17,7 +15,12 @@ export type GroupedStatusViewProps = Omit<
   onToggleEpic: (epicId: string) => void
 }
 
-export function GroupedStatusView({ sections, expandedEpics, onToggleEpic, ...card }: GroupedStatusViewProps) {
+export function GroupedStatusView({
+  sections,
+  expandedEpics,
+  onToggleEpic,
+  ...card
+}: GroupedStatusViewProps) {
   return (
     <>
       {sections.map((section) => (

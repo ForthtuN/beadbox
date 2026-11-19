@@ -904,7 +904,7 @@ function BeadsEpicsViewer() {
 
   // beadbox-brg: shared grouped-by-status renderer. Used at three render sites:
   //  - flat-list workspaces (no real epics) — input is `flatBeads`
-  //  - desktop epic-tree view when filters.grouped — input is flattened epic tree
+  //  - desktop epic-tree view when filters.grouped — top-level tasks stay nested
   //  - mobile epic-tree view when filters.grouped — same input as desktop
   // The status filter has already applied (filterEpics drops non-matching
   // beads), so the input here is the already-narrowed set; grouping is
