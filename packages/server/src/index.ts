@@ -37,8 +37,9 @@ import { captureShutdownSource } from "./lib/shutdown-source"
 // OS-provided (bb-6x9y's Worker variant relied on
 // `new Worker(new URL("./...", import.meta.url))` which Bun's compile
 // mode does NOT bundle, so the production sidecar silently no-op'd).
+// On Windows, a Rust-owned Job Object replaces the shell watcher entirely.
 // No-op when started as a daemon (process.ppid === 1) or when Tauri
-// reaps us cleanly via SIGTERM before the next 5s poll.
+// reaps us cleanly via SIGTERM before the next 5s poll on POSIX.
 const stopWatcher = startParentDeathWatcherViaShell()
 
 // Boot diagnostic on stderr — proves "did the binary even start?" when smoke
@@ -90,7 +91,7 @@ function shutdown(signal: NodeJS.Signals): void {
     `[bb-0vlu] sigterm_received signal=${signal} pid=${process.pid} ppid=${process.ppid} parentChain=${JSON.stringify(parentChain)} beadboxProcs=${JSON.stringify(beadboxProcs)}\n`,
   )
 
-  // bb-0vlu: shell-spawn watchdog. Bun's setTimeout is unreliable while
+  // bb-0vlu: shell-spawn watchdog on POSIX. Bun's setTimeout is unreliable while
   // the main event loop is blocked (BunIo stdin reader, kkrpc message in
   // flight, or a hanging cleanup step below). Same problem bb-6x9y solved
   // for the parent-death watcher: spawn /bin/sh which has its own
@@ -98,17 +99,21 @@ function shutdown(signal: NodeJS.Signals): void {
   // if process.exit(0) succeeds first, the kill -KILL on our (now-gone)
   // pid is a silent no-op. stderr inherits ours so the escalation line
   // lands in bb-pnk0's tee + tauri-plugin-js's onStderr relay.
-  try {
-    Bun.spawn(
-      [
-        "/bin/sh",
-        "-c",
-        `sleep 2; printf '[bb-0vlu] shutdown_watchdog_escalating signal=${signal} pid=${process.pid} reason=process_exit_hung\\n' >&2; kill -KILL ${process.pid} 2>/dev/null`,
-      ],
-      { stdio: ["ignore", "ignore", "inherit"] },
-    )
-  } catch {
-    /* spawn failed — non-fatal; we'll rely on process.exit below */
+  // Windows already has a host-owned Job Object; do not spawn /bin/sh or
+  // another shell process there.
+  if (process.platform !== "win32") {
+    try {
+      Bun.spawn(
+        [
+          "/bin/sh",
+          "-c",
+          `sleep 2; printf '[bb-0vlu] shutdown_watchdog_escalating signal=${signal} pid=${process.pid} reason=process_exit_hung\\n' >&2; kill -KILL ${process.pid} 2>/dev/null`,
+        ],
+        { stdio: ["ignore", "ignore", "inherit"] },
+      )
+    } catch {
+      /* spawn failed — non-fatal; we'll rely on process.exit below */
+    }
   }
 
   process.stderr.write(`[beadbox-sidecar] received ${signal}, shutting down\n`)

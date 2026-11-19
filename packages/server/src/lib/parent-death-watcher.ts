@@ -8,11 +8,12 @@
 //      version still works in pure-test contexts (no kkrpc loop) and
 //      stays for unit-testability + future use cases without kkrpc.
 //
-//   2. `startParentDeathWatcherViaShell(opts)` — shell-spawn variant
+//   2. `startParentDeathWatcherViaShell(opts)` — POSIX shell-spawn variant
 //      that runs `/bin/sh -c "while kill -0 PARENT; do sleep N; done;
 //      kill -SIG MAIN"` as a child process. The shell child has its own
 //      scheduler — immune to the BunIo stdin reader blocking the main
-//      thread's timers. This is what index.ts uses in the real sidecar.
+//      thread's timers. On Windows the Tauri host instead attaches this
+//      sidecar to a native Job Object, so no PowerShell child is needed.
 //
 // History (bb-x0il):
 //   bb-6x9y originally shipped a Bun Worker variant
@@ -108,51 +109,38 @@ export interface ShellWatcherOptions {
  * Platform-aware:
  *   - POSIX (macOS/Linux): `/bin/sh -c "while kill -0 PARENT; do sleep N;
  *     done; kill -SIG MAIN"`.
- *   - Windows: `powershell -NoProfile -Command "while (Get-Process -Id
- *     PARENT -ErrorAction SilentlyContinue) { Start-Sleep -Seconds N };
- *     Stop-Process -Id MAIN -Force"`. powershell.exe is on Windows's
- *     System32 PATH so Bun.spawn finds it without bundling.
+ *   - Windows: no shell process. The Tauri host uses a native Windows Job
+ *     Object to terminate this sidecar if the host exits or crashes.
  *
- * Both survive `bun build --compile` because the shell binaries are
- * OS-provided. Before beadbox-cdi the POSIX path was hard-coded and
- * Bun.spawn('/bin/sh') threw ENOENT on Windows, leaving zombie sidecars
- * after every Tauri parent exit and starving the renderer of subsequent
- * subscription events.
+ * The POSIX path survives `bun build --compile` because /bin/sh is
+ * OS-provided; the Windows job is owned by the Rust host.
  *
  * Returns a stop function that terminates the shell child.
  *
  * No-op when parentPid === 1 (daemon-style start, no parent to watch).
  */
 export function startParentDeathWatcherViaShell(opts: ShellWatcherOptions = {}): () => void {
+  if (process.platform === "win32") {
+    process.stderr.write("[bb-x0il-state] watcher_skipped reason=windows_native_job_object\n")
+    return () => {}
+  }
   const intervalSec = Math.max(1, Math.floor(opts.intervalSec ?? DEFAULT_INTERVAL_SEC))
   const parentPid = opts.parentPid ?? process.ppid
   const mainPid = opts.mainPid ?? process.pid
   const signal = opts.signal ?? "KILL"
 
   if (parentPid === 1) {
-    process.stderr.write(
-      `[bb-x0il-state] watcher_skipped reason=parent_pid_1 mainPid=${mainPid}\n`,
-    )
+    process.stderr.write(`[bb-x0il-state] watcher_skipped reason=parent_pid_1 mainPid=${mainPid}\n`)
     return () => {}
   }
 
-  const isWindows = process.platform === "win32"
-  const command: string[] = isWindows
-    ? [
-        "powershell",
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `while (Get-Process -Id ${parentPid} -ErrorAction SilentlyContinue) { Start-Sleep -Seconds ${intervalSec} }; Stop-Process -Id ${mainPid} -Force`,
-      ]
-    : [
-        "/bin/sh",
-        "-c",
-        // POSIX: while `kill -0 PARENT` succeeds, sleep. When it fails
-        // (parent gone), signal mainPid and exit. `2>/dev/null` swallows
-        // the "No such process" stderr from kill -0 once the parent dies.
-        `while kill -0 ${parentPid} 2>/dev/null; do sleep ${intervalSec}; done; kill -${signal} ${mainPid}`,
-      ]
+  const command: string[] = [
+    "/bin/sh",
+    "-c",
+    // POSIX: while kill -0 PARENT succeeds, sleep. On parent exit, signal
+    // mainPid and exit. Suppress the "No such process" diagnostic.
+    `while kill -0 ${parentPid} 2>/dev/null; do sleep ${intervalSec}; done; kill -${signal} ${mainPid}`,
+  ]
 
   try {
     const child = Bun.spawn(command, {

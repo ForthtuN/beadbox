@@ -10,6 +10,8 @@ mod credentials;
 pub mod paths;
 #[cfg(not(target_os = "ios"))]
 mod telemetry_id;
+#[cfg(target_os = "windows")]
+mod windows_sidecar_job;
 // beadbox-b2p (A-3'): private-repo self-update driven from the Rust host.
 #[cfg(not(target_os = "ios"))]
 
@@ -35,6 +37,21 @@ fn is_internal_navigation(scheme: &str, host: &str) -> bool {
 /// of the desktop on_navigation closure.
 fn should_open_externally(scheme: &str) -> bool {
     scheme == "http" || scheme == "https"
+}
+
+/// Attach a newly spawned sidecar to an OS-managed Windows lifetime group.
+/// On other systems the existing shell-based watcher remains unchanged.
+#[tauri::command]
+fn adopt_sidecar_for_windows(pid: Option<u32>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_sidecar_job::adopt(pid.ok_or("sidecar spawn did not return a PID")?)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = pid;
+        Ok(())
+    }
 }
 
 /// Linux-only WebView refresh-keystroke predicate. Pure boolean function
@@ -186,6 +203,7 @@ pub fn run() {
             // (hooks/use-update-downloader.ts).
             .plugin(tauri_plugin_updater::Builder::new().build())
             .invoke_handler(tauri::generate_handler![
+                adopt_sidecar_for_windows,
                 telemetry_id::get_stable_id,
                 telemetry_id::get_username_prefix,
                 credentials::get_credential,

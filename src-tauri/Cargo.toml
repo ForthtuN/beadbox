@@ -50,6 +50,17 @@ url = "2"
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
 
+# Windows: kill the sidecar when its Tauri host exits, without a PowerShell
+# polling subprocess. No extra standalone tools are needed.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 # Linux-only: GTK HeaderBar for window decorations on X11,
 # gdk for intercepting Ctrl+R before WebKitGTK consumes it
 [target.'cfg(target_os = "linux")'.dependencies]

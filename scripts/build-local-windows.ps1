@@ -7,6 +7,11 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
 }
 
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$startedAt = Get-Date
+# Tauri's NSIS downloader uses the Windows Known Folder even if LOCALAPPDATA
+# is overridden. Do not touch a cache that belonged to another project.
+$globalTauriCache = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'tauri'
+$globalTauriCacheExisted = Test-Path -LiteralPath $globalTauriCache
 $config = Join-Path $root 'src-tauri/tauri.local-windows.conf.json'
 $local = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json
 if ($local.identifier -ne 'app.beadbox.local' -or
@@ -25,6 +30,11 @@ if (Test-Path -LiteralPath (Join-Path $localBunDir 'bun.exe')) {
 # shared profile caches. Rust itself continues to use the existing toolchain.
 $env:CARGO_HOME = Join-Path $root '.cargo-home'
 $env:BUN_INSTALL_CACHE_DIR = Join-Path $root '.bun-cache'
+
+# Tauri's NSIS packager normally puts its downloaded toolchain under the
+# user's shared LOCALAPPDATA. Keep it in this project's ignored directory.
+$env:LOCALAPPDATA = Join-Path $root '.local-appdata'
+New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
 
 # rustup may be installed without its shims on the current PowerShell PATH.
 $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
@@ -79,4 +89,16 @@ try {
 }
 finally {
     Pop-Location
+    if (-not $globalTauriCacheExisted -and (Test-Path -LiteralPath $globalTauriCache)) {
+        try {
+            $cache = Get-Item -LiteralPath $globalTauriCache
+            if ($cache.CreationTime -ge $startedAt.AddSeconds(-2)) {
+                Remove-Item -LiteralPath $globalTauriCache -Recurse -Force -ErrorAction Stop
+                Write-Host 'Removed temporary system Tauri/NSIS cache; no shared cache was touched.'
+            }
+        }
+        catch {
+            Write-Warning "Could not clean temporary Tauri cache: $_"
+        }
+    }
 }

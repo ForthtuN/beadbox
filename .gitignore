@@ -7,6 +7,7 @@
 /.tools/
 /.bun-cache/
 /.cargo-home/
+/.local-appdata/
 /releases/
 
 # production

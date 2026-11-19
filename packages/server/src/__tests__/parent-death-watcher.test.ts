@@ -102,7 +102,9 @@ async function waitDead(pid: number, budgetMs: number): Promise<boolean> {
   return false
 }
 
-describe("startParentDeathWatcherViaShell", () => {
+const describePosix = process.platform === "win32" ? describe.skip : describe
+
+describePosix("startParentDeathWatcherViaShell", () => {
   it("returns no-op when parentPid is 1 (no shell spawned)", () => {
     // Sanity: with parentPid=1 the watcher must not throw or attach a
     // child it can't terminate. The returned stop() is also a no-op.
@@ -203,3 +205,12 @@ describe("startParentDeathWatcherViaShell", () => {
     await waitDead(victim.pid, 3_000)
   }, 20_000)
 })
+
+if (process.platform === "win32") {
+  it("Windows uses a host-owned Job Object instead of spawning PowerShell", () => {
+    // A standalone sidecar has no background PowerShell subprocess either.
+    const stop = startParentDeathWatcherViaShell({ parentPid: process.pid })
+    expect(typeof stop).toBe("function")
+    stop()
+  })
+}

@@ -10,6 +10,7 @@
 // (vite-plugins/test-transport-guard.ts) fails the build if any of the module
 // survives. Under bun test the constant is undefined, so the flag is off.
 
+import { invoke } from "@tauri-apps/api/core"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import {
   createChannel,
@@ -31,7 +32,18 @@ type StderrListener = (name: string, callback: (data: string) => void) => Promis
 
 const tauriRuntime: SidecarRuntime = {
   onExit: (callback) => onExit(SIDECAR_NAME, callback),
-  spawn: () => spawn(SIDECAR_NAME, { sidecar: SIDECAR_NAME }),
+  spawn: async () => {
+    const info = await spawn(SIDECAR_NAME, { sidecar: SIDECAR_NAME })
+    try {
+      // The Tauri host owns the sidecar lifetime via a Windows Job Object.
+      // On other systems the command is a no-op and their watcher remains.
+      await invoke("adopt_sidecar_for_windows", { pid: info.pid })
+    } catch (err) {
+      // A failed registration must not leave an orphaned sidecar.
+      await kill(SIDECAR_NAME).catch(() => {})
+      throw err
+    }
+  },
   kill: () => kill(SIDECAR_NAME),
   // getStatus rejects when no process is registered under the name.
   isRunning: () =>

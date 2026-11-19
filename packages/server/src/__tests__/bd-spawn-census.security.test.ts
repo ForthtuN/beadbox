@@ -16,7 +16,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
-import { dirname, join, relative, resolve } from "node:path"
+import { dirname, join, posix, relative } from "node:path"
 import * as ts from "typescript"
 
 const SRC = dirname(import.meta.dir)
@@ -121,7 +121,7 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
   },
   "lib/parent-death-watcher.ts::startParentDeathWatcherViaShell::Bun.spawn": {
     count: 1,
-    why: "/bin/sh or powershell loop interpolating only numeric pids, a numeric interval and a signal name; no client input",
+    why: "POSIX /bin/sh loop interpolating only numeric pids, a numeric interval and a signal name; Windows uses a native host-owned Job Object with no subprocess; no client input",
   },
 }
 
@@ -168,7 +168,9 @@ function parse(sources: Sources): Record<string, ts.SourceFile> {
 
 function resolveImport(from: string, spec: string, files: Set<string>): string | null {
   if (!spec.startsWith(".")) return null
-  const base = relative("/", resolve("/", dirname(from), spec))
+  // Source keys are always POSIX-style, even on Windows: they represent a
+  // virtual file tree, not paths on the host's filesystem.
+  const base = posix.normalize(posix.join(posix.dirname(from), spec))
   for (const candidate of [base, `${base}.ts`, `${base}/index.ts`]) {
     if (files.has(candidate)) return candidate
   }
@@ -420,7 +422,9 @@ function serverSources(): Sources {
       return name.endsWith(".ts") && !name.endsWith(".test.ts") ? [path] : []
     })
   if (!existsSync(SRC)) throw new Error(`missing ${SRC}`)
-  return Object.fromEntries(walk(SRC).map((p) => [relative(SRC, p), readFileSync(p, "utf-8")]))
+  return Object.fromEntries(
+    walk(SRC).map((p) => [relative(SRC, p).replaceAll("\\", "/"), readFileSync(p, "utf-8")]),
+  )
 }
 
 // ---------------------------------------------------------------------------
