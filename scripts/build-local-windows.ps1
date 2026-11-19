@@ -15,13 +15,16 @@ if ($local.identifier -ne 'app.beadbox.local' -or
     throw 'Local app identity or updater protection is missing from the Tauri config.'
 }
 
-# A project-root toolchain can supply Bun without changing the user's PATH.
-if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
-    $localBunDir = Join-Path (Split-Path -Parent $root) '.tools/bun'
-    if (Test-Path -LiteralPath (Join-Path $localBunDir 'bun.exe')) {
-        $env:PATH = "$localBunDir;$env:PATH"
-    }
+# Prefer the Bun executable stored only in this project.
+$localBunDir = Join-Path $root '.tools/bun'
+if (Test-Path -LiteralPath (Join-Path $localBunDir 'bun.exe')) {
+    $env:PATH = "$localBunDir;$env:PATH"
 }
+
+# Keep future Rust and Bun downloads inside this project, not the user's
+# shared profile caches. Rust itself continues to use the existing toolchain.
+$env:CARGO_HOME = Join-Path $root '.cargo-home'
+$env:BUN_INSTALL_CACHE_DIR = Join-Path $root '.bun-cache'
 
 # rustup may be installed without its shims on the current PowerShell PATH.
 $cargoBin = Join-Path $env:USERPROFILE '.cargo/bin'
@@ -65,7 +68,14 @@ try {
     if ($installers.Count -eq 0) {
         throw "Build finished, but no Beadbox Local installer was found under $bundleDir."
     }
-    $installers | ForEach-Object { Write-Host "Local Windows installer: $($_.FullName)" }
+    # Keep the installer outside Tauri's disposable target/ build directory.
+    $releases = Join-Path $root 'releases'
+    New-Item -ItemType Directory -Path $releases -Force | Out-Null
+    $installers | ForEach-Object {
+        $output = Join-Path $releases $_.Name
+        Copy-Item -LiteralPath $_.FullName -Destination $output -Force
+        Write-Host "Local Windows installer: $output"
+    }
 }
 finally {
     Pop-Location

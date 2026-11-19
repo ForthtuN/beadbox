@@ -3,6 +3,12 @@
 # dependencies
 /node_modules
 
+# Local-only Windows build tools, dependency caches and installer artifacts.
+/.tools/
+/.bun-cache/
+/.cargo-home/
+/releases/
+
 # production
 /build
 
