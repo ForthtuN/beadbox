@@ -263,7 +263,7 @@ function bdServerPoll(dbPath: string): Promise<string> {
   }
 
   return new Promise((resolve, reject) => {
-    execFile(resolveBdPath(), args, { timeout: 10_000, cwd, env }, (err, stdout) => {
+    execFile(resolveBdPath(), args, { timeout: 10_000, cwd, env, windowsHide: true }, (err, stdout) => {
       if (err) return reject(err)
       resolve(stdout.trim())
     })

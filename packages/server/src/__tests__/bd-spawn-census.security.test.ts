@@ -26,6 +26,10 @@ const SRC = dirname(import.meta.dir)
 // exported callers; every other site says what reaches its argv.
 const BD_TS_FUZZED = "lib/bd.ts: covered by the export fuzz via its exported callers"
 const REVIEWED: Record<string, { count: number; why: string }> = {
+  "lib/exec.ts::<module>::nativeExecFileAsync": {
+    count: 1,
+    why: "central execFileAsync wrapper: forwards validated command and argument arrays from the audited call sites, injects windowsHide true for the Windows GUI, preserves captured output and timeout; no shell",
+  },
   // --- lib/bd.ts: the bd API surface, fuzzed slot by slot ---
   "lib/bd.ts::execBdWithRetry::execFileAsync": { count: 2, why: BD_TS_FUZZED },
   "lib/bd.ts::initServerScaffold::execFileAsync": { count: 1, why: BD_TS_FUZZED },
@@ -133,10 +137,7 @@ const REVIEWED: Record<string, { count: number; why: string }> = {
 // even before the walker learns it.
 const SPAWN_TEXT =
   /child_process|["']bun["']|\bBun\b|\bspawn(Sync)?\b|\bexecFile(Sync)?\b|\bexeca\b|cross-spawn|tinyexec|\bzx\b|process\.binding|\brequire\s*\(/
-const BACKSTOP_REVIEWED: Record<string, string> = {
-  "lib/exec.ts":
-    "defines execFileAsync = promisify(execFile) and the PATH it runs with; it calls nothing itself, and its spawner is followed to every call site",
-}
+const BACKSTOP_REVIEWED: Record<string, string> = {}
 
 // ---------------------------------------------------------------------------
 // Walker
@@ -346,6 +347,22 @@ function isSpawnerExpr(expr: ts.Expression, b: FileBindings): boolean {
 /** promisify(<spawner>) or <spawner>.bind(...): a new function that spawns. */
 function wrapsSpawner(expr: ts.Expression, b: FileBindings): boolean {
   const e = unwrap(expr)
+  // Central audited wrappers may intercept an option (e.g. windowsHide)
+  // before calling their existing spawner. Keep tracking their exported name
+  // AND their internal call rather than silently losing all callers.
+  if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
+    const returned = ts.isBlock(e.body)
+      ? e.body.statements
+          .filter(ts.isReturnStatement)
+          .map((s) => s.expression)
+          .filter((expr): expr is ts.Expression => expr !== undefined)
+      : [e.body]
+    return returned.some(
+      (expr) =>
+        ts.isCallExpression(unwrap(expr)) &&
+        isSpawnerExpr((unwrap(expr) as ts.CallExpression).expression, b),
+    )
+  }
   if (!ts.isCallExpression(e)) return false
   const callee = unwrap(e.expression)
   const isPromisify =

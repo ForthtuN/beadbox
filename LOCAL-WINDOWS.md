@@ -10,6 +10,9 @@ Branch: `feature/hierarchical-windows`. Den vanliga `main`-branchen påverkas in
   används och Beadbox startar därför **ingen PowerShell-watchdog**.
 - Från version **0.34.2** kompileras Bun-sidecaren med
   `--windows-hide-console`. Det förhindrar ett separat Windows Terminal-fönster.
+- Från version **0.34.3** kör Beadbox sina `bd.exe`-hämtningar med
+  `windowsHide` för att förhindra kortvariga CMD-fönster vid uppstart och
+  uppdatering av arbetsytor.
 - Uppdateraren är avstängd i den lokala Windows-konfigurationen.
 
 ## Bygg
@@ -30,7 +33,7 @@ tar bort den om den inte fanns redan före bygget.
 ## Installera uppdatering
 
 Stäng först den redan körande Beadbox Local och kör den nya
-`releases/Beadbox Local_0.34.2_x64-setup.exe`. Uppdateringen har samma
+`releases/Beadbox Local_0.34.3_x64-setup.exe`. Uppdateringen har samma
 appidentitet som föregående Local-version, men högre versionsnummer.
 
 ## Verifiering 0.34.1
