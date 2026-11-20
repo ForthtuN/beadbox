@@ -8,6 +8,8 @@ Branch: `feature/hierarchical-windows`. Den vanliga `main`-branchen påverkas in
 - Från version **0.34.1** avslutar Windows automatiskt Beadbox-sidecaren
   när Tauri-hostprocessen avslutas eller kraschar. En Windows Job Object
   används och Beadbox startar därför **ingen PowerShell-watchdog**.
+- Från version **0.34.2** kompileras Bun-sidecaren med
+  `--windows-hide-console`. Det förhindrar ett separat Windows Terminal-fönster.
 - Uppdateraren är avstängd i den lokala Windows-konfigurationen.
 
 ## Bygg
@@ -28,7 +30,7 @@ tar bort den om den inte fanns redan före bygget.
 ## Installera uppdatering
 
 Stäng först den redan körande Beadbox Local och kör den nya
-`releases/Beadbox Local_0.34.1_x64-setup.exe`. Uppdateringen har samma
+`releases/Beadbox Local_0.34.2_x64-setup.exe`. Uppdateringen har samma
 appidentitet som föregående Local-version, men högre versionsnummer.
 
 ## Verifiering 0.34.1

@@ -94,6 +94,14 @@ OUTFILE="$BINARIES_DIR/${SIDECAR_BASENAME}-${TARGET}${EXT}"
 
 mkdir -p "$BINARIES_DIR"
 
+# Bun's Windows default is a console application. With a sidecar that can
+# open a separate Windows Terminal window. Retain Tauri's IPC pipes while
+# suppressing the unwanted console using Bun's compile-time setting.
+WINDOWS_FLAGS=()
+if [[ "$TARGET" == *windows* ]]; then
+  WINDOWS_FLAGS+=(--windows-hide-console)
+fi
+
 echo "[copy-sidecar] rust triple: $TARGET"
 echo "[copy-sidecar] bun target:  $BUN_TARGET"
 echo "[copy-sidecar] outfile:     $OUTFILE"
@@ -114,6 +122,7 @@ echo "[copy-sidecar] outfile:     $OUTFILE"
 # package.json script — packages/server's `build` script is
 # `tsc --noEmit`, not the bundler subcommand.)
 bun build --compile \
+  "${WINDOWS_FLAGS[@]}" \
   --minify \
   --sourcemap=none \
   --target="$BUN_TARGET" \
